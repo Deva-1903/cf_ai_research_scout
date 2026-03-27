@@ -1,0 +1,37 @@
+name = "cf-ai-research-scout-worker"
+main = "src/index.ts"
+compatibility_date = "2026-01-28"
+compatibility_flags = ["nodejs_compat"]
+
+# Workers AI — always remote
+[ai]
+binding = "AI"
+
+# D1 database
+[[d1_databases]]
+binding = "DB"
+database_name = "cf-ai-research-scout-db"
+database_id = "3d9eef3e-93e1-416c-b7e5-dc6054e1a9d9"
+
+# Durable Objects
+# Binding name must match class name exactly — routeAgentRequest uses it to route
+# /agents/research-session/:id → env.ResearchSession
+[durable_objects]
+bindings = [
+  { name = "ResearchSession", class_name = "ResearchSession" }
+]
+
+# SQLite-backed DO migration (required for AIChatAgent)
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["ResearchSession"]
+
+# Cloudflare Workflow for digest generation
+[[workflows]]
+name = "digest-workflow"
+binding = "DIGEST_WORKFLOW"
+class_name = "DigestWorkflow"
+
+# CORS — set to your Pages URL after deployment
+[vars]
+FRONTEND_ORIGIN = "http://localhost:5173"

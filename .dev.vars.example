@@ -1,0 +1,6 @@
+# Copy this to .dev.vars and fill in values for local development.
+# Cloudflare Workers AI is called remotely even in local dev,
+# so no API key is needed here — wrangler uses your CF account automatically.
+
+# Optional: override the frontend origin for CORS during local dev
+# FRONTEND_ORIGIN=http://localhost:5173

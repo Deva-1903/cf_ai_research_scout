@@ -1,0 +1,4 @@
+# Cloudflare Pages redirect — proxies /api/* to the Worker.
+# Replace the URL below with your deployed worker URL.
+# If you set VITE_API_URL at build time instead, delete this file.
+/api/* https://cf-ai-research-scout-worker.YOUR_SUBDOMAIN.workers.dev/api/:splat 200
