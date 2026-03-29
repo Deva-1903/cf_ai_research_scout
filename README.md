@@ -22,7 +22,7 @@ Sources indexed from `developers.cloudflare.com` — the Agents SDK docs, Durabl
 - What does the `@callable()` decorator do?
 - When should I use a Workflow instead of handling everything in the Agent?
 
-→ **[Open this session](https://cf-ai-research-scout.pages.dev/session/05551eb0-8c00-4c44-ac5f-699b3b85c4f6)** _(select "Cloudflare Agents Deep Dive" from the home page)_
+→ **[Open this session](https://cf-ai-research-scout.pages.dev/session/05551eb0-8c00-4c44-ac5f-699b3b85c4f6)** 
 
 ---
 
@@ -39,7 +39,7 @@ Sources from Anthropic's contextual retrieval research, LangChain's RAG breakdow
 - How does Cloudflare Vectorize fit into a RAG pipeline?
 - _Or just hit "Generate Digest" to see the WorkflowEntrypoint in action — it synthesises all sources into a structured brief._
 
-→ **[Open this session](https://cf-ai-research-scout.pages.dev/session/180a92ca-febb-4262-8b97-c042f31781e8)** _(select "RAG Pipeline Research" from the home page)_
+→ **[Open this session](https://cf-ai-research-scout.pages.dev/session/180a92ca-febb-4262-8b97-c042f31781e8)**
 
 ---
 
