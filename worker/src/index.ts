@@ -31,6 +31,12 @@ app.route("/api", chatRoutes);
 app.get("/api/health", (c) => c.json({ status: "ok", ts: Date.now() }));
 app.all("*", (c) => c.json({ error: "Not found" }, 404));
 
+const CORS_HEADERS = (origin: string) => ({
+  "Access-Control-Allow-Origin": origin,
+  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Upgrade, Connection",
+});
+
 export default {
   /**
    * Request routing:
@@ -38,8 +44,23 @@ export default {
    *  - /api/*                        → Hono REST API (sessions, sources, digest)
    */
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    const origin = env.FRONTEND_ORIGIN ?? "http://localhost:5173";
+
+    // CORS preflight for /agents/* (Hono middleware doesn't cover these)
+    if (request.method === "OPTIONS") {
+      return new Response(null, { status: 204, headers: CORS_HEADERS(origin) });
+    }
+
     const agentResponse = await routeAgentRequest(request, env);
-    if (agentResponse) return agentResponse;
+    if (agentResponse) {
+      // WebSocket upgrades (101) must not be cloned — pass through as-is
+      if (agentResponse.status === 101) return agentResponse;
+      // Add CORS to regular agent HTTP responses (e.g. get-messages)
+      const res = new Response(agentResponse.body, agentResponse);
+      Object.entries(CORS_HEADERS(origin)).forEach(([k, v]) => res.headers.set(k, v));
+      return res;
+    }
+
     return app.fetch(request, env, ctx);
   },
 } satisfies ExportedHandler<Env>;

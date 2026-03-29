@@ -114,14 +114,19 @@ export default function SourcePanel({ sessionId }: Props) {
       )}
 
       <div className="source-list">
-        {sources.map((source) => (
+        {sources.map((source, i) => (
           <div key={source.id} className="card" style={{ padding: "0.75rem", background: "var(--surface2)" }}>
             <div className="source-item">
               <div className="source-meta">
-                {source.title ? (
-                  <div className="source-title" title={source.title}>{source.title}</div>
-                ) : null}
-                <div className="source-url" title={source.url}>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                  <span style={{ fontSize: "0.7rem", fontWeight: 700, color: "var(--accent)", background: "var(--accent-light)", borderRadius: "4px", padding: "0.1rem 0.4rem", flexShrink: 0 }}>
+                    #{i + 1}
+                  </span>
+                  {source.title ? (
+                    <div className="source-title" title={source.title}>{source.title}</div>
+                  ) : null}
+                </div>
+                <div className="source-url" style={{ paddingLeft: "1.6rem" }} title={source.url}>
                   <a href={source.url} target="_blank" rel="noopener noreferrer">
                     {source.url}
                   </a>
