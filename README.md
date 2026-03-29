@@ -6,14 +6,46 @@ A Cloudflare-native AI research assistant. Create a research session, add articl
 
 ---
 
-## What It Does
+## Try it — pre-built sessions
 
-1. **Create a research session** — give it a title, a research question, and optional style instructions.
-2. **Add source URLs** — paste any publicly accessible article or documentation page.
-3. **Background ingestion** — the worker fetches, extracts text, chunks it, generates embeddings, and indexes everything in the database automatically.
-4. **Chat over your sources** — ask follow-up questions. The AI retrieves the most relevant chunks via cosine similarity and grounds its answers in evidence.
-5. **Citations with snippets** — every assistant response links back to the exact source excerpts it used.
-6. **Generate a digest** — ask the app to summarize all indexed sources into a structured research brief.
+Two sessions are already set up at the live URL with sources indexed and chat history. Jump straight in:
+
+### Session 1 · Cloudflare Agents Deep Dive
+
+> _"How does the Cloudflare Agents SDK work, and how does it differ from raw Durable Objects?"_
+
+Sources indexed from `developers.cloudflare.com` — the Agents SDK docs, Durable Objects docs, and the launch blog post.
+
+**Good questions to ask:**
+
+- What is AIChatAgent and how does it differ from a raw Durable Object?
+- What does the `@callable()` decorator do?
+- When should I use a Workflow instead of handling everything in the Agent?
+
+→ **[Open this session](https://cf-ai-research-scout.pages.dev/session/05551eb0-8c00-4c44-ac5f-699b3b85c4f6)** _(select "Cloudflare Agents Deep Dive" from the home page)_
+
+---
+
+### Session 2 · RAG Pipeline Research
+
+> _"What are the most effective techniques for improving RAG accuracy and reducing hallucinations in production?"_
+
+Sources from Anthropic's contextual retrieval research, LangChain's RAG breakdown, and Cloudflare Vectorize docs.
+
+**Good questions to ask:**
+
+- What is contextual retrieval and how does it improve on naive chunking?
+- What chunking strategies does Anthropic recommend?
+- How does Cloudflare Vectorize fit into a RAG pipeline?
+- _Or just hit "Generate Digest" to see the WorkflowEntrypoint in action — it synthesises all sources into a structured brief._
+
+→ **[Open this session](https://cf-ai-research-scout.pages.dev/session/180a92ca-febb-4262-8b97-c042f31781e8)** _(select "RAG Pipeline Research" from the home page)_
+
+---
+
+## What it does
+
+You create a research session with a question you're investigating, add article or documentation URLs, and the worker ingests them in the background — fetching, chunking, embedding, and indexing into D1. Once sources are indexed, you can chat. The AI retrieves the most relevant chunks per question using cosine similarity and answers grounded in what's actually in the sources. There's also a digest feature that runs as a durable Workflow and generates a structured summary across all indexed material.
 
 ---
 
@@ -40,6 +72,7 @@ Browser (React 19 + Vite)
 ### Data Flow
 
 **Ingestion (background):**
+
 ```
 POST /api/sessions/:id/sources
   → D1: insert source (status=queued)
@@ -49,6 +82,7 @@ POST /api/sessions/:id/sources
 ```
 
 **Chat (real-time WebSocket):**
+
 ```
 Browser useAgentChat() ──WebSocket──► ResearchSession AIChatAgent (DO)
   → onChatMessage() called
@@ -59,6 +93,7 @@ Browser useAgentChat() ──WebSocket──► ResearchSession AIChatAgent (DO)
 ```
 
 **Digest (async Workflow):**
+
 ```
 POST /api/sessions/:id/digest
   → DigestWorkflow.create({ sessionId })
@@ -73,20 +108,20 @@ GET /api/sessions/:id/digest  ← poll until { ready: true }
 
 ## Stack
 
-| Layer | Technology |
-|-------|-----------|
-| Frontend | React 19, React Router, Vite |
-| Chat hooks | `agents/react` (`useAgent`) + `@cloudflare/ai-chat/react` (`useAgentChat`) |
-| Hosting | Cloudflare Pages |
-| API | Cloudflare Workers + Hono |
-| AI Agent | `AIChatAgent` from `@cloudflare/ai-chat` (Durable Object) |
-| Agentic tools | `tool()` from `ai` SDK with `inputSchema` — `rag_search` |
-| Agent orchestration | Cloudflare Agents SDK (`agents`) — `routeAgentRequest`, `@callable()` |
-| Async workflow | Cloudflare Workflows — `WorkflowEntrypoint` (`DigestWorkflow`) |
-| Database | Cloudflare D1 (SQLite) |
-| Embeddings | Workers AI — `@cf/baai/bge-base-en-v1.5` |
-| Text generation | Workers AI — `@cf/meta/llama-3.3-70b-instruct-fp8-fast` |
-| Language | TypeScript everywhere |
+| Layer               | Technology                                                                 |
+| ------------------- | -------------------------------------------------------------------------- |
+| Frontend            | React 19, React Router, Vite                                               |
+| Chat hooks          | `agents/react` (`useAgent`) + `@cloudflare/ai-chat/react` (`useAgentChat`) |
+| Hosting             | Cloudflare Pages                                                           |
+| API                 | Cloudflare Workers + Hono                                                  |
+| AI Agent            | `AIChatAgent` from `@cloudflare/ai-chat` (Durable Object)                  |
+| Agentic tools       | `tool()` from `ai` SDK with `inputSchema` — `rag_search`                   |
+| Agent orchestration | Cloudflare Agents SDK (`agents`) — `routeAgentRequest`, `@callable()`      |
+| Async workflow      | Cloudflare Workflows — `WorkflowEntrypoint` (`DigestWorkflow`)             |
+| Database            | Cloudflare D1 (SQLite)                                                     |
+| Embeddings          | Workers AI — `@cf/baai/bge-base-en-v1.5`                                   |
+| Text generation     | Workers AI — `@cf/meta/llama-3.3-70b-instruct-fp8-fast`                    |
+| Language            | TypeScript everywhere                                                      |
 
 ---
 
@@ -160,8 +195,8 @@ cf_ai_research_scout/
 
 Set these in `wrangler.toml` (for production) or `.dev.vars` (local):
 
-| Variable | Description |
-|----------|-------------|
+| Variable          | Description                                                                                               |
+| ----------------- | --------------------------------------------------------------------------------------------------------- |
 | `FRONTEND_ORIGIN` | URL of the frontend (for CORS). Defaults to `http://localhost:5173`. Set to your Pages URL in production. |
 
 Workers AI and D1 are configured via `wrangler.toml` bindings — no API keys needed beyond your Cloudflare account credentials.
@@ -217,6 +252,7 @@ npm run db:init:remote  # applies schema to remote D1 (needed for deploy)
 Open two terminals:
 
 **Terminal 1 — Worker:**
+
 ```bash
 cd worker
 npm run dev
@@ -224,6 +260,7 @@ npm run dev
 ```
 
 **Terminal 2 — Frontend:**
+
 ```bash
 cd frontend
 npm install --legacy-peer-deps   # agents SDK requires React 19
@@ -258,6 +295,7 @@ wrangler pages deploy dist --project-name cf-ai-research-scout
 ```
 
 Or connect the `frontend/` directory to Cloudflare Pages via the dashboard with:
+
 - Build command: `npm run build`
 - Build output: `dist`
 - Root directory: `frontend`
@@ -285,26 +323,26 @@ Then re-deploy both the worker and the frontend.
 
 ### REST endpoints (Hono)
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/api/sessions` | Create session |
-| `GET` | `/api/sessions` | List sessions |
-| `GET` | `/api/sessions/:id` | Get session |
-| `PUT` | `/api/sessions/:id` | Update session |
-| `DELETE` | `/api/sessions/:id` | Delete session (cascades) |
-| `POST` | `/api/sessions/:id/sources` | Add URL source (triggers background ingestion) |
-| `GET` | `/api/sessions/:id/sources` | List sources + status |
-| `DELETE` | `/api/sources/:id` | Delete source |
-| `POST` | `/api/sources/:id/retry` | Retry failed source |
-| `POST` | `/api/sessions/:id/digest` | Start digest workflow — returns `{ workflowId }` |
-| `GET` | `/api/sessions/:id/digest` | Poll for digest result — returns `{ ready, content, … }` |
-| `GET` | `/api/health` | Health check |
+| Method   | Path                        | Description                                              |
+| -------- | --------------------------- | -------------------------------------------------------- |
+| `POST`   | `/api/sessions`             | Create session                                           |
+| `GET`    | `/api/sessions`             | List sessions                                            |
+| `GET`    | `/api/sessions/:id`         | Get session                                              |
+| `PUT`    | `/api/sessions/:id`         | Update session                                           |
+| `DELETE` | `/api/sessions/:id`         | Delete session (cascades)                                |
+| `POST`   | `/api/sessions/:id/sources` | Add URL source (triggers background ingestion)           |
+| `GET`    | `/api/sessions/:id/sources` | List sources + status                                    |
+| `DELETE` | `/api/sources/:id`          | Delete source                                            |
+| `POST`   | `/api/sources/:id/retry`    | Retry failed source                                      |
+| `POST`   | `/api/sessions/:id/digest`  | Start digest workflow — returns `{ workflowId }`         |
+| `GET`    | `/api/sessions/:id/digest`  | Poll for digest result — returns `{ ready, content, … }` |
+| `GET`    | `/api/health`               | Health check                                             |
 
 ### WebSocket / Agent endpoint
 
-| Protocol | Path | Description |
-|----------|------|-------------|
-| `WS` | `/agents/research-session/:id` | Real-time chat with `ResearchSession` AIChatAgent |
+| Protocol | Path                           | Description                                       |
+| -------- | ------------------------------ | ------------------------------------------------- |
+| `WS`     | `/agents/research-session/:id` | Real-time chat with `ResearchSession` AIChatAgent |
 
 Chat messages, history, and state are managed entirely through the WebSocket connection via `useAgentChat`. The agent persists all messages in the Durable Object's SQLite storage.
 
@@ -333,15 +371,15 @@ Chat messages, history, and state are managed entirely through the WebSocket con
 
 ## Cloudflare Assignment Compliance
 
-| Requirement | Implementation | Where |
-|-------------|---------------|-------|
-| **LLM integration** | Workers AI `@cf/meta/llama-3.3-70b-instruct-fp8-fast` for streaming chat responses and digest generation | `ResearchSession.ts` → `streamText()`, `DigestWorkflow.ts` → `env.AI.run()` |
-| **Workflow / coordination** | `DigestWorkflow extends WorkflowEntrypoint` — 4 durable steps (load chunks → load session → generate → store). Survives interruptions and resumes from last completed step. | `worker/src/workflows/DigestWorkflow.ts` |
-| **Agentic tools** | `rag_search` tool registered with `tool()` from AI SDK v6 (`inputSchema`, `execute`). Agent automatically calls it before answering research questions. Multi-step agent loop with `stopWhen: stepCountIs(5)`. | `ResearchSession.ts` lines 96–128 |
-| **User input via chat** | Real-time WebSocket chat via `AIChatAgent` from `@cloudflare/ai-chat`. Frontend uses `useAgent` + `useAgentChat` hooks. Streaming responses via `toUIMessageStreamResponse()`. | `ResearchSession.ts`, `ChatPanel.tsx` |
-| **Memory / state** | `AIChatAgent` persists full conversation in Durable Object SQLite storage across sessions. Session metadata, sources, and chunks persist in D1. | `ResearchSession.ts` (DO state), `worker/schema.sql` |
-| **Agents SDK** | `routeAgentRequest` routes `/agents/research-session/:id` to the correct DO; `@callable()` decorator exposes `addSourceFromChat` as an RPC method callable from the frontend agent stub. | `index.ts`, `ResearchSession.ts` |
-| **Durable Objects** | `ResearchSession` uses `new_sqlite_classes` migration (SQLite-backed DO). One instance per session, keyed by session ID. | `wrangler.toml`, `ResearchSession.ts` |
-| **D1 database** | Stores sessions, sources, text chunks with embeddings (JSON), and digests. All ingestion and retrieval goes through D1. | `worker/schema.sql`, `services/ingestion.ts`, `services/retrieval.ts` |
-| **Workers AI (embeddings)** | `@cf/baai/bge-base-en-v1.5` generates 768-dim embeddings for all chunks and queries; cosine similarity retrieval selects top-6 relevant chunks per query. | `services/llm.ts`, `services/retrieval.ts` |
-| **Original work** | End-to-end research assistant: session management, background URL ingestion, RAG chat, durable digest workflow, React 19 frontend — built from scratch using Cloudflare primitives. | Full codebase |
+| Requirement                 | Implementation                                                                                                                                                                                                 | Where                                                                       |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| **LLM integration**         | Workers AI `@cf/meta/llama-3.3-70b-instruct-fp8-fast` for streaming chat responses and digest generation                                                                                                       | `ResearchSession.ts` → `streamText()`, `DigestWorkflow.ts` → `env.AI.run()` |
+| **Workflow / coordination** | `DigestWorkflow extends WorkflowEntrypoint` — 4 durable steps (load chunks → load session → generate → store). Survives interruptions and resumes from last completed step.                                    | `worker/src/workflows/DigestWorkflow.ts`                                    |
+| **Agentic tools**           | `rag_search` tool registered with `tool()` from AI SDK v6 (`inputSchema`, `execute`). Agent automatically calls it before answering research questions. Multi-step agent loop with `stopWhen: stepCountIs(5)`. | `ResearchSession.ts` lines 96–128                                           |
+| **User input via chat**     | Real-time WebSocket chat via `AIChatAgent` from `@cloudflare/ai-chat`. Frontend uses `useAgent` + `useAgentChat` hooks. Streaming responses via `toUIMessageStreamResponse()`.                                 | `ResearchSession.ts`, `ChatPanel.tsx`                                       |
+| **Memory / state**          | `AIChatAgent` persists full conversation in Durable Object SQLite storage across sessions. Session metadata, sources, and chunks persist in D1.                                                                | `ResearchSession.ts` (DO state), `worker/schema.sql`                        |
+| **Agents SDK**              | `routeAgentRequest` routes `/agents/research-session/:id` to the correct DO; `@callable()` decorator exposes `addSourceFromChat` as an RPC method callable from the frontend agent stub.                       | `index.ts`, `ResearchSession.ts`                                            |
+| **Durable Objects**         | `ResearchSession` uses `new_sqlite_classes` migration (SQLite-backed DO). One instance per session, keyed by session ID.                                                                                       | `wrangler.toml`, `ResearchSession.ts`                                       |
+| **D1 database**             | Stores sessions, sources, text chunks with embeddings (JSON), and digests. All ingestion and retrieval goes through D1.                                                                                        | `worker/schema.sql`, `services/ingestion.ts`, `services/retrieval.ts`       |
+| **Workers AI (embeddings)** | `@cf/baai/bge-base-en-v1.5` generates 768-dim embeddings for all chunks and queries; cosine similarity retrieval selects top-6 relevant chunks per query.                                                      | `services/llm.ts`, `services/retrieval.ts`                                  |
+| **Original work**           | End-to-end research assistant: session management, background URL ingestion, RAG chat, durable digest workflow, React 19 frontend — built from scratch using Cloudflare primitives.                            | Full codebase                                                               |
