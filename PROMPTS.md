@@ -1,44 +1,77 @@
-# PROMPTS.md — cf_ai_research_scout
+# PROMPTS.md
 
-This file documents the AI prompts used within the application, with explanations of their purpose and design decisions.
+This file documents how I used Claude Code (AI-assisted coding) during development. I planned the architecture, set up the project structure, wrote the D1 schema, and handled the Cloudflare config myself — then used Claude Code as a pair programmer for implementation, debugging, and refactoring specific parts.
 
 ---
 
-## 1. Research Assistant System Prompt
+## Development Prompts (Claude Code)
 
-**Location:** `worker/src/prompts/system.ts` → `buildSystemPrompt()`
+### Ingestion service
 
-**Prompt:**
+I had the schema and wrangler setup done, and knew the flow I wanted: fetch URL → strip HTML → chunk text → embed → store. Asked Claude to implement it:
+
+> I'm building a Cloudflare Worker that ingests URLs for a RAG app. I have a D1 database with a `sources` table (id, session_id, url, title, status) and a `chunks` table (id, source_id, session_id, text, embedding, chunk_order). Write an `ingestSource(sourceId, url, sessionId, env)` function that: fetches the URL, extracts readable text from HTML, chunks it at ~500 chars with overlap, calls `@cf/baai/bge-base-en-v1.5` via Workers AI to embed each chunk, and stores them in D1. Update the source status to 'processing' → 'indexed' or 'failed' throughout.
+
+### Cosine similarity retrieval
+
+I wrote the basic retrieval function myself but wanted a review and to add the early-exit for empty sessions (which was causing a 1031 Workers AI error):
+
+> Here's my retrieval function — it loads all indexed chunks from D1, embeds the query, and ranks by cosine similarity. The problem is it calls Workers AI to embed even when there are no indexed chunks, which causes a 1031 error. Add a check to skip the embed call if the chunk query returns empty, and wrap the embed call in a try/catch so a transient AI error doesn't crash the whole chat request.
+
+### AIChatAgent refactor
+
+After getting the basic flow working with a raw Durable Object, I decided to switch to `AIChatAgent` from `@cloudflare/ai-chat` to get proper WebSocket handling and message persistence for free. I needed help with the migration:
+
+> Refactor my `ResearchSession` Durable Object to extend `AIChatAgent` from `@cloudflare/ai-chat` instead of `DurableObject`. It should: sync session metadata and sources from D1 on `onStart()`, implement `onChatMessage()` using `streamText` from the AI SDK with `workers-ai-provider`, pre-retrieve RAG context before the LLM call and inject it into the system prompt, and keep the existing `@callable addSourceFromChat` method. Use `pruneMessages` and `convertToModelMessages` from the AI SDK to keep context manageable.
+
+### DigestWorkflow
+
+I wanted the digest to run as a proper durable Workflow so it survives interruptions. Knew the 4 steps, needed help with the WorkflowEntrypoint pattern:
+
+> Implement a `DigestWorkflow` using Cloudflare's `WorkflowEntrypoint`. It takes a `sessionId` param. Steps: (1) load all indexed chunks from D1, (2) load session metadata, (3) call `@cf/meta/llama-3.3-70b-instruct-fp8-fast` directly via `env.AI.run()` with a digest prompt, (4) insert the result into a `digests` table. The REST endpoint should return `{ workflowId }` immediately and a GET endpoint polls D1 until the digest row exists.
+
+### Workers AI 1031 error
+
+Hit this after switching to `streamText` with `tools`:
+
+> I'm getting `InferenceUpstreamError: error code 1031` when calling `streamText` with a `tools` block using `workers-ai-provider` and `@cf/meta/llama-3.3-70b-instruct-fp8-fast`. The error comes from inside `WorkersAIChatLanguageModel.doStream`. Is this a model limitation? How should I restructure `onChatMessage` to do RAG without using the tools API — just pre-retrieve the chunks and inject context into the system prompt instead?
+
+### Frontend chat panel layout bug
+
+> The digest content renders inside the fixed-height chat card, so when a long digest appears it pushes the message list out of view. The chat card uses `height: calc(100vh - 200px)` and flexbox. Fix the layout so the digest lives in a separate card below the chat panel entirely, and the chat messages area always stays at its correct height.
+
+### React 19 + agents SDK dependency conflict
+
+> `npm install` is failing because `agents@0.8.6` requires `react@^19.0.0` as a peer but my frontend is on React 18. The error is ERESOLVE. What's the cleanest fix — upgrade React or use legacy-peer-deps?
+
+---
+
+## Application Prompts (used inside the app at runtime)
+
+These are the prompts the app itself sends to the LLM. I designed these — Claude helped me tighten the wording.
+
+### System prompt (`buildSystemPrompt`)
+
+Sets the assistant's behavior for the whole session. The research question is injected so the model stays on topic across many turns.
+
 ```
 You are a research assistant helping the user reason over a curated set of sources they have provided.
 
 The user's primary research question is: "{researchQuestion}"
 
-Your job:
-- Answer questions based primarily on the retrieved source excerpts provided in each message.
-- When citing, include the source title or URL and a brief snippet that supports your claim.
-- If multiple sources agree or conflict, note this explicitly.
-- If the retrieved evidence is weak, incomplete, or absent, say so clearly — do not invent source-backed claims.
-- Keep answers well-structured: use short paragraphs or bullet points for clarity.
-- If the user asks something unrelated to the sources, you may answer from general knowledge but clearly label it as such.
-- Prefer precision over length. Be concise unless the user asks to go deep.
+- Answer based primarily on the retrieved source excerpts provided.
+- Cite sources by title or URL with a brief supporting snippet.
+- If sources agree or conflict, say so explicitly.
+- If evidence is weak or absent, admit it — do not invent citations.
+- Keep answers concise and structured. Use bullet points where it helps.
+- If answering from general knowledge, clearly label it as such.
 {customInstructions}
 ```
 
-**Why this prompt exists:**
-The system prompt establishes the assistant's identity as a *grounded* research tool, not a general chatbot. The key constraints are:
-- "Do not invent source-backed claims" — prevents hallucination of citations, which is a major failure mode for RAG systems
-- "If multiple sources agree or conflict, note this" — surfaces disagreements rather than flattening them into a single confident answer
-- "clearly label it as such" when using general knowledge — maintains source transparency
-- The session's `researchQuestion` is injected so the model can stay on-topic across many follow-up turns
+### Context block (`buildContextBlock`)
 
----
+Injected with each chat turn — the top-6 chunks retrieved for the user's question.
 
-## 2. Retrieved Context Block Prompt
-
-**Location:** `worker/src/prompts/system.ts` → `buildContextBlock()`
-
-**Prompt:**
 ```
 Here are the most relevant excerpts from the user's indexed sources:
 
@@ -50,29 +83,16 @@ Here are the most relevant excerpts from the user's indexed sources:
 [Source 2: {title or URL}]
 {chunk text}
 
-...
-
-Use these excerpts to answer the user's question. Cite sources by their label (e.g. "Source 1") or URL.
+Use these excerpts to answer the user's question. Cite by label (e.g. "Source 1") or URL.
 ```
 
-**Why this prompt exists:**
-The retrieval context is injected as a second system message immediately before the conversation history. This structure:
-- Keeps the retrieved chunks clearly labeled with their provenance
-- Uses numeric labels ("Source 1", "Source 2") that the model can reference in its output, which are then mapped back to real citations in the API response
-- Separates context injection from the system identity prompt so each can be updated independently
-- Using a second `system` message (rather than a `user` turn) keeps it out of the visible conversation history
+### Digest prompt (`buildDigestPrompt`)
 
----
+Single-shot synthesis prompt for the DigestWorkflow. Designed to go beyond summarization into comparative analysis.
 
-## 3. Digest / Summary Prompt
-
-**Location:** `worker/src/prompts/system.ts` → `buildDigestPrompt()`
-
-**Prompt:**
 ```
 You are producing a research digest for the following question: "{researchQuestion}"
 
-Here are the most relevant excerpts from the user's indexed sources:
 {contextBlock}
 
 Write a structured digest that:
@@ -81,93 +101,5 @@ Write a structured digest that:
 3. Identifies gaps or unanswered aspects of the research question.
 4. Ends with 3-5 takeaways or recommended next steps.
 
-Format the digest in clear Markdown with headers.
+Format the output in Markdown with headers.
 ```
-
-**Why this prompt exists:**
-The digest serves as a one-shot synthesis of all indexed material. The numbered structure forces the model to go beyond summarization into comparative analysis (agreements/disagreements) and gap identification — the two things a human researcher would want to know. The Markdown output format is intentional: it renders cleanly in the UI and can be copied directly into notes.
-
----
-
-## 4. Ingestion Pipeline (not an LLM prompt — AI model used directly)
-
-**Location:** `worker/src/services/llm.ts` → `embedBatch()`
-
-**Model:** `@cf/baai/bge-base-en-v1.5`
-**Input:** Array of text chunks (plain text, ~500 chars each)
-**Output:** Array of 768-dimensional float vectors
-
-**Why bge-base-en-v1.5:**
-- Strong performance on retrieval benchmarks (MTEB)
-- 768-dimension output — compact enough to store as JSON in D1 without bloat
-- Fast inference via Workers AI — critical for processing many chunks during ingestion
-- No instruction prefix needed for retrieval tasks (unlike some other models)
-
-**Chunking strategy:**
-- Target ~500 characters per chunk with 80-char overlap
-- Prefer paragraph breaks, then sentence boundaries
-- Minimum chunk length of 80 chars to discard noise
-- Capped at 50,000 chars per source to prevent excessive embedding cost
-
-**Why this design:**
-Smaller chunks (vs. 2000-char chunks) improve retrieval precision — a short relevant sentence scores higher than a large paragraph that only partially matches the query. The overlap ensures that a sentence split across two chunks doesn't disappear from both.
-
----
-
-## 5. Retrieval Strategy (not a prompt — algorithmic)
-
-**Location:** `worker/src/services/retrieval.ts`
-
-**Method:** Cosine similarity between query embedding and stored chunk embeddings
-
-**Parameters:**
-- `TOP_K = 6` — retrieve up to 6 chunks per question
-- `SIMILARITY_THRESHOLD = 0.2` — discard chunks below this score to avoid injecting irrelevant context
-
-**Why cosine similarity over D1 (not Vectorize):**
-For sessions with up to a few hundred chunks, in-process cosine similarity is fast enough (~1-5ms) and avoids the complexity of managing a Vectorize index. This keeps local development straightforward and the architecture explainable. Vectorize would be the right upgrade path at scale.
-
-**Why TOP_K = 6:**
-Six chunks at ~500 chars each = ~3000 chars of context. This fits comfortably in the llama-3.1-8b-instruct context window alongside the system prompt and conversation history, without pushing against token limits that cause truncation.
-
----
-
-## 6. Chat Message Construction
-
-**Location:** `worker/src/routes/chat.ts`
-
-**Message stack sent to the LLM:**
-```
-[system]  → buildSystemPrompt()        (assistant identity + research question)
-[system]  → buildContextBlock()        (retrieved chunks for this turn)
-[user]    → prior turn 1
-[assistant] → prior response 1
-...
-[user]    → current question
-```
-
-**Why this structure:**
-- Two system messages: Cloudflare's llama model handles this correctly and it avoids polluting the visible conversation history
-- Prior turns are included (up to 10) so the model can handle follow-up questions like "expand on the third point"
-- The context block is rebuilt fresh every turn — this ensures retrieval is always query-specific rather than using a fixed "session summary"
-
----
-
-## Construction Prompts (Prompts Used to Build This App)
-
-The following prompts were used in the AI-assisted development session that produced this codebase.
-
-### Architecture Planning Prompt
-> Build an app called `cf_ai_research_scout`. A user creates a research session, enters a topic/question, adds a few URLs, and the app ingests those sources in the background. Once processed, the user can chat with an AI assistant that answers questions grounded in the ingested material and remembers the ongoing research thread. Use Cloudflare Workers, D1, Durable Objects, and Workers AI. Skip Vectorize and store embeddings in D1 — compute cosine similarity in the worker. Keep it simple and deployable.
-
-### UI Scaffolding Prompt
-> Build a clean dark-mode React + Vite frontend with no component libraries. Create: a home page with session list and create modal, and a session page with a two-column layout: left column has source input + status list with polling, right column has a chat interface with citation cards below each assistant message. No auth. Minimal dependencies.
-
-### Retrieval Prompt Design
-> Design a retrieval context block for a RAG system where chunks are labeled [Source 1], [Source 2], etc. The instruction to the model should emphasize using these excerpts for answers and citing by label. Keep it under 100 words.
-
-### System Prompt Design
-> Write a system prompt for a research assistant LLM that: grounds answers in retrieved sources, cites evidence explicitly, admits when evidence is weak, handles source conflicts by noting them, falls back to general knowledge with clear labeling, and stays concise. Inject the session's research question into the prompt so the model stays on topic.
-
-### Digest Prompt Design
-> Write a one-shot digest prompt that takes a research question and a set of source excerpts and produces a structured Markdown summary with: key themes, source agreements/conflicts, identified gaps, and 3-5 takeaways. Designed for a single LLM call, not a conversation.
