@@ -1,5 +1,7 @@
 # cf_ai_research_scout
 
+**Live demo:** https://cf-ai-research-scout.pages.dev
+
 A Cloudflare-native AI research assistant. Create a research session, add article/document URLs, wait for background ingestion, then chat with an AI that answers questions **grounded in your sources** — with citations.
 
 ---

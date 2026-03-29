@@ -34,4 +34,4 @@ class_name = "DigestWorkflow"
 
 # CORS — set to your Pages URL after deployment
 [vars]
-FRONTEND_ORIGIN = "http://localhost:5173"
+FRONTEND_ORIGIN = "https://cf-ai-research-scout.pages.dev"
